@@ -10,11 +10,6 @@ import (
 	"github.com/shaikhzidhin/models"
 )
 
-var (
-	hotel          = models.Hotels{}
-	fetchHotelById = hotel.FetchHotelById
-)
-
 // AddHotel adds a new hotel.
 func AddHotel(c *gin.Context) {
 	var hotel models.Hotels
@@ -85,6 +80,7 @@ func ViewSpecificHotel(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "conversion error"})
 		return
 	}
+	var hotel models.Hotels
 
 	if err := Init.DB.Where("id = ?", uint(hotelID)).First(&hotel).Error; err != nil {
 		c.JSON(500, gin.H{

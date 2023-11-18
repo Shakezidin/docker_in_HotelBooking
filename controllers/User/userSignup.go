@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"encoding/json"
 	"math/rand"
 	"net/http"
@@ -27,20 +28,12 @@ func generateRandomString(length int) string {
 	return string(b)
 }
 
-var (
-	setRedis  = Init.SetRedis
-	getOtp    = controllers.GetOTP
-	verifyOtp = controllers.VerifyOTP
-	getRedis  = Init.GetRedis
-	create    = user.CreateUser
-)
-
 // Signup for user signup
 func Signup(c *gin.Context) {
 	var user models.User
 
 	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusBadGateway, gin.H{
 			"Message": "binding error",
 		})
 		c.Abort()
@@ -52,24 +45,49 @@ func Signup(c *gin.Context) {
 		return
 	}
 
+	result := Init.DB.Where("user_name = ?", user.UserName).First(&user)
+	if result.RowsAffected > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"Message": "User_Name already Exist",
+		})
+		return
+	}
+
+	email := Init.DB.Where("email = ?", user.Email).First(&user)
+	if email.RowsAffected > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"Message": "Email already exist",
+		})
+		return
+	}
+
 	if user.ReferralCode != "" {
 		var referredUser models.User
 		result := Init.DB.Where("referral_code = ?", user.ReferralCode).First(&referredUser)
 		if result.Error != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "user not found in this referral code"})
+			c.JSON(400, gin.H{"error": "user not found in this referral code"})
 			return
 		}
 		user.Wallet.Balance += 50
 	}
 
-	if err := user.HashPassword(user.Password); err != nil {
+	phone := Init.DB.Where("phone = ?", user.Phone).First(&user)
+	if phone.RowsAffected > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
+			"Message": "phone number already exist",
+		})
+		return
+	}
+
+	if err := user.HashPassword(user.Password); err != nil {
+		c.JSON(400, gin.H{
 			"msg": "hashing error",
 		})
 		c.Abort()
 		return
 	}
-	Otp := getOtp(user.Name, user.Email)
+
+	Otp := controllers.GetOTP(user.Name, user.Email)
 
 	jsonData, err := json.Marshal(user)
 	if err != nil {
@@ -78,36 +96,40 @@ func Signup(c *gin.Context) {
 	}
 
 	// Inserting the OTP into Redis
-	err = setRedis("signUpOTP"+user.Email, Otp, 5*time.Minute)
+	err = Init.ReddisClient.Set(context.Background(), "signUpOTP"+user.Email, Otp, 5*time.Minute).Err()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "false", "error": "Error inserting OTP in Redis client"})
+		c.JSON(http.StatusBadRequest, gin.H{"status": "false", "error": "Error inserting OTP in Redis client", "err": err})
 		return
 	}
 
 	// Inserting the data into Redis
-	err = setRedis("userData"+user.Email, jsonData, 5*time.Minute)
+	err = Init.ReddisClient.Set(context.Background(), "userData"+user.Email, jsonData, 5*time.Minute).Err()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "false", "error": "Error inserting user data in Redis client"})
 		return
 	}
 
-	c.JSON(http.StatusAccepted, gin.H{"status": "true", "message": "Go to user/signup-verification"})
+	c.JSON(http.StatusAccepted, gin.H{"status": "true", "messsage": "Go to user/signup-verification"})
 }
 
 // SignupVerification for User OTP verification
 func SignupVerification(c *gin.Context) {
-	var otpCred models.OtpCredentials
+	type otpCredentials struct {
+		Email string `json:"email"`
+		Otp   string `json:"otp"`
+	}
+	var otpCred otpCredentials
 	if err := c.ShouldBindJSON(&otpCred); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "binding error"})
+		c.JSON(http.StatusBadRequest, gin.H{"status": "false", "error": err})
 		return
 	}
 
-	if verifyOtp("signUpOTP"+otpCred.Email, otpCred.Otp, c) {
+	if controllers.VerifyOTP("signUpOTP"+otpCred.Email, otpCred.Otp, c) {
 		var userData models.User
 		superKey := "userData" + otpCred.Email
-		jsonData, err := getRedis(superKey)
+		jsonData, err := Init.ReddisClient.Get(context.Background(), superKey).Result()
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"status": "falseee", "error": "Error getting user data from Redis client"})
+			c.JSON(http.StatusBadRequest, gin.H{"status": "false", "error": "Error getting user data from Redis client"})
 			return
 		}
 		err = json.Unmarshal([]byte(jsonData), &userData)
@@ -118,14 +140,14 @@ func SignupVerification(c *gin.Context) {
 
 		if userData.ReferralCode == "" {
 			userData.ReferralCode = generateRandomString(10)
+
 			// Create user and save transaction history and wallet balance
-			err := create(&userData, Init.DB)
-			if err != nil {
-				c.JSON(400, gin.H{"Error": "USer creation Error"})
+			results := Init.DB.Create(&userData)
+			if results.Error != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"status": "falsee", "Error": results.Error})
 				return
 			}
-
-			c.JSON(200, gin.H{"status": "true", "message": "Otp Verification success. User creation done"})
+			c.JSON(200, gin.H{"status": "user created success"})
 			return
 		}
 

@@ -187,7 +187,7 @@ func RazorpaySuccess(c *gin.Context) {
 
 	Init.DB.Create(&availableRooms)
 
-	owner.Revenue += int(ownerAmount)
+	owner.Revenue += uint(ownerAmount)
 	Init.DB.Save(&owner)
 
 	adminRevenue := models.Revenue{}

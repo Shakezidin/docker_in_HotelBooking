@@ -46,10 +46,3 @@ type RazorPay struct {
 	Signature       string  `JSON:"signature"`
 	AmountPaid      float64 `JSON:"amountpaid"`
 }
-
-func (booking *Booking) FetchHistory(userId uint, db *gorm.DB) (*Booking, error) {
-	if err := db.Where("user_id = ?", userId).Find(&booking).Error; err != nil {
-		return nil, err
-	}
-	return booking, nil
-}

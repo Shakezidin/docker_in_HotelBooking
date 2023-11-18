@@ -2,55 +2,46 @@ package user
 
 import (
 	"net/http"
-
 	"github.com/gin-gonic/gin"
 	Auth "github.com/shaikhzidhin/Auth"
 	Init "github.com/shaikhzidhin/initializer"
 	"github.com/shaikhzidhin/models"
 )
 
-var (
-	updateUser     = models.UpdateUSer
-	userr          = &models.User{}
-	checkPasswordd = userr.CheckPassword
-	booking        = models.Booking{}
-	history        = booking.FetchHistory
-)
-
 // Profile handles user profile retrieval.
 func Profile(c *gin.Context) {
+	var user models.User
 	header := c.Request.Header.Get("Authorization")
-
 	username, err := Auth.Trim(header)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "username didn't get"})
 		return
 	}
 
-	user, errr := fetchUser(username, Init.DB)
-	if errr != nil {
-		c.JSON(400, gin.H{"Error": "Fetching user error"})
+	if err := Init.DB.Preload("Wallet").Where("user_name = ?", username).First(&user).Error; err != nil {
+		c.JSON(400, gin.H{"error": "user not found"})
 		return
 	}
 
-	c.JSON(200, gin.H{"Status": "Success","User":user})
+	c.JSON(200, gin.H{"success": user})
 }
 
 // ProfileEdit handles editing user profile.
 func ProfileEdit(c *gin.Context) {
-
 	header := c.Request.Header.Get("Authorization")
 	username, err := Auth.Trim(header)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "username didn't get"})
 		return
 	}
-	user, err := fetchUser(username, Init.DB)
-	if err != nil {
-		c.JSON(400, gin.H{"Error": "Fetching user error"})
+	var user models.User
+	if err := Init.DB.Where("user_name = ?", username).First(&user).Error; err != nil {
+		c.JSON(500, gin.H{
+			"msg": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-
 	var updateuser struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
@@ -58,6 +49,21 @@ func ProfileEdit(c *gin.Context) {
 	}
 	if err := c.BindJSON(&updateuser); err != nil {
 		c.JSON(400, gin.H{"error": "Binding error"})
+		return
+	}
+	result := Init.DB.Where("email = ?", updateuser.Email).First(&user)
+	if result.RowsAffected > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"Message": "email already exists",
+		})
+		return
+	}
+
+	phone := Init.DB.Where("phone = ?", updateuser.Phone).First(&user)
+	if phone.RowsAffected > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"Message": "phone number already exists",
+		})
 		return
 	}
 
@@ -77,11 +83,11 @@ func ProfileEdit(c *gin.Context) {
 	user.Email = updateuser.Email
 	user.Phone = updateuser.Phone
 
-	if err := updateUser(user, Init.DB); err != nil {
-		c.JSON(400, gin.H{"Error": "Error while updating user"})
+	save := Init.DB.Save(&user)
+	if save.Error != nil {
+		c.JSON(400, gin.H{"error": save.Error})
 		return
 	}
-
 	c.JSON(200, gin.H{"status": "success"})
 }
 
@@ -103,15 +109,18 @@ func PasswordChange(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "username didn't get"})
 		return
 	}
-
-	user, err := fetchUser(username, Init.DB)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": "User not found"})
+	var user models.User
+	if err := Init.DB.Where("user_name = ?", username).First(&user).Error; err != nil {
+		c.JSON(500, gin.H{
+			"msg": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	if err := checkPasswordd(pswrd.OldPassword); err != nil {
+
+	if err := user.CheckPassword(pswrd.OldPassword); err != nil {
 		c.JSON(400, gin.H{
-			"Error": err,
+			"msg": "password incorrect",
 		})
 		return
 	}
@@ -124,9 +133,11 @@ func PasswordChange(c *gin.Context) {
 		return
 	}
 
-	err = updateUser(user, Init.DB)
-	if err != nil {
-		c.JSON(400, gin.H{"Error": "Updating user error"})
+	result := Init.DB.Save(&user)
+	if result.Error != nil {
+		c.JSON(404, gin.H{
+			"Error": result.Error.Error(),
+		})
 		return
 	}
 
@@ -141,18 +152,20 @@ func History(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "username didn't get"})
 		return
 	}
-
-	user, err := fetchUser(username, Init.DB)
-	if err != nil {
-		c.JSON(400, gin.H{"Error": "User fetching error"})
+	var user models.User
+	if err := Init.DB.Where("user_name = ?", username).First(&user).Error; err != nil {
+		c.JSON(500, gin.H{
+			"msg": err.Error(),
+		})
+		c.Abort()
 		return
 	}
+	var booking []models.Booking
 
-	_, errr := history(user.ID, Init.DB)
-	if errr != nil {
+	if err := Init.DB.Where("user_id = ?", user.ID).Find(&booking).Error; err != nil {
 		c.JSON(400, gin.H{"Error": "error while fetching booking"})
 		return
 	}
 
-	c.JSON(200, gin.H{"history": "booking"})
+	c.JSON(200, gin.H{"history": booking})
 }

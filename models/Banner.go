@@ -18,11 +18,3 @@ type Banner struct {
 	HotelsID  uint   `json:"hotel_id"`
 	Hotels    Hotels `gorm:"ForeignKey:HotelsID"`
 }
-
-func (banners *Banner) FetchBanner(available,active bool,db *gorm.DB) ([]*Banner, error) {
-	var bannersSlice []*Banner
-	if err := db.Preload("Hotels").Where("available = ? AND active = ?", true, true).Find(&bannersSlice).Error; err != nil {
-		return nil, err
-	}
-	return bannersSlice, nil
-}

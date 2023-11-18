@@ -13,56 +13,49 @@ import (
 	"github.com/shaikhzidhin/models"
 )
 
-var user = models.User{}
-var (
-	fetchUser     = user.FetchUser
-	checkPassword = user.CheckPassword
-)
-
 // Login handles user login.
 func Login(c *gin.Context) {
 	var userLogin models.Login
 	var user models.User
 	if err := c.BindJSON(&userLogin); err != nil {
 		c.JSON(400, gin.H{
-			"Error": err.Error(),
+			"msg": err.Error(),
 		})
 		return
 	}
-
-	user.UserName = userLogin.Username
 	// Checking whether the username exists or not
-	userr, err := fetchUser(userLogin.Username, Init.DB)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": "User fetching error"})
+	result := Init.DB.Where("user_name = ?", userLogin.Username).First(&user)
+	if result.Error != nil {
+		c.JSON(404, gin.H{
+			"msg": "user not found",
+		})
 		return
 	}
 	// Checks whether the user is blocked or not
-	if userr.IsBlocked {
+	if user.IsBlocked {
 		c.JSON(404, gin.H{
 			"msg": "user has been blocked",
 		})
 		c.Abort()
 		return
 	}
-
 	// Password verification
-	if err := checkPassword(userLogin.Password); err != nil {
+	if err := user.CheckPassword(userLogin.Password); err != nil {
 		c.JSON(400, gin.H{
-			"msg": "password error",
+			"msg": err.Error(),
 		})
 		return
 	}
 
-	tokenString, err := Auth.GenerateJWT(userr.UserName)
+	tokenString, err := Auth.GenerateJWT(user.UserName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		c.Abort()
 		return
 	}
-
+	token := tokenString
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("UserAuth", tokenString, 3600*24*30, "", "", false, true)
+	c.SetCookie("UserAuth", token, 3600*24*30, "", "", false, true)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		c.Abort()
@@ -75,7 +68,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{"loginStatus": "Success", "tocken": tokenString})
+	c.JSON(200, gin.H{"loginStatus": "Success", "username": userLogin.Username, "token": tokenString})
 }
 
 // ForgetPassword handles the user's password recovery request.

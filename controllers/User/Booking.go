@@ -34,7 +34,6 @@ func OfflinePayment(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "username does not exist"})
 		return
 	}
-	fmt.Println("hello")
 
 	var user models.User
 	if err := Init.DB.Where("user_name = ?", username).First(&user).Error; err != nil {
@@ -43,6 +42,7 @@ func OfflinePayment(c *gin.Context) {
 	}
 
 	fromdateStr, err := initializer.ReddisClient.Get(context.Background(), "fromdate").Result()
+	fmt.Println(fromdateStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "false", "error": "Error getting 'fromdate' from Redis client"})
 		return
@@ -132,7 +132,7 @@ func OfflinePayment(c *gin.Context) {
 
 	Init.DB.Create(&availableRooms)
 
-	owner.Revenue += int(ownerAmount)
+	owner.Revenue += uint(ownerAmount)
 	Init.DB.Save(&owner)
 
 	adminRevenue := models.Revenue{}

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    name: redis
+    component: cache
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        name: redis
+        component: cache
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        env:
+        - name: MASTER
+          value: "true"
+        - name: RedisAddr
+          value: "6379"
+        - name: RedisPass
+          value: "Sinu1090."
+        ports:
+        - containerPort: 6379

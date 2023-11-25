@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:latest
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        env:
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          value: Sinu1090.
+        - name: POSTGRES_DB
+          value: icrodebooking
+        - name: HOST
+          value: postgres  
+        - name: PSQLUSER
+          value: postgres
+        - name: PSQLPASSWORD
+          value: Sinu1090.
+        - name: DATABASENAME
+          value: icrodebooking
+        - name: PORT
+          value: "5432"
+        - name: SSLMODE
+          value: "disable" 
+        ports:
+        - containerPort: 5432
